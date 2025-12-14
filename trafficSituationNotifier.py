@@ -1,48 +1,9 @@
 import requests
-import json
 from datetime import datetime
-import sys
-from config import GOOGLE_API_KEY, DISCORD_WEBHOOK_URL, ORIGIN, DESTINATION, DETOUR_SAVINGS_THRESHOLD_MIN
-
-def get_route_data(travel_mode, alternatives=False):
-    url = "https://routes.googleapis.com/directions/v2:computeRoutes"
-    headers = {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline"
-    }
-    
-    body = {
-        "origin": {"location": {"latLng": {"latitude": ORIGIN["lat"], "longitude": ORIGIN["lng"]}}},
-        "destination": {"location": {"latLng": {"latitude": DESTINATION["lat"], "longitude": DESTINATION["lng"]}}},
-        "travelMode": travel_mode,
-        "routingPreference": "TRAFFIC_AWARE" if travel_mode in ["DRIVE", "TWO_WHEELER"] else None,
-        "computeAlternativeRoutes": alternatives,
-        "units": "METRIC"
-    }
-
-    # Transit requires different handling (no traffic_aware preference)
-    if travel_mode == "TRANSIT":
-        body.pop("routingPreference", None)
-
-    response = requests.post(url, json=body, headers=headers)
-    return response.json()
-
-def parse_duration(duration_str):
-    """Converts '3600s' string to minutes (int)."""
-    if not duration_str: return 0
-    return int(duration_str.replace("s", "")) // 60
-
-def generate_static_map_url(polyline):
-    """Creates a URL for a static map image showing the route."""
-    base_url = "https://maps.googleapis.com/maps/api/staticmap?"
-    params = [
-        "size=600x300",
-        "maptype=roadmap",
-        f"path=enc:{polyline}",
-        f"key={GOOGLE_API_KEY}"
-    ]
-    return base_url + "&".join(params)
+from config.config import DISCORD_WEBHOOK_URL, DETOUR_SAVINGS_THRESHOLD_MIN, ORIGIN, DESTINATION, COLOR_GREEN, COLOR_RED
+from config.googleData import get_route_data, generate_static_map_url
+from helpers.parseDuration import parse_duration
+from helpers.formatTravelTime import format_travel_time
 
 def main():
     try:
@@ -58,19 +19,27 @@ def main():
 
         main_route = drive_data['routes'][0]
         drive_time_min = parse_duration(main_route.get('duration'))
-        static_time_min = parse_duration(main_route.get('staticDuration')) # Time without traffic
+        static_time_min = parse_duration(main_route.get('staticDuration'))
         
-        # Calculate Traffic Impact
         traffic_delay = drive_time_min - static_time_min
-        is_heavy_traffic = traffic_delay > 10 # Flag if delay is > 10 mins
+        is_heavy_traffic = traffic_delay > 10
 
         # 3. Process Other Modes
         moto_time_min = parse_duration(moto_data['routes'][0].get('duration')) if moto_data.get('routes') else "N/A"
         transit_time_min = parse_duration(transit_data['routes'][0].get('duration')) if transit_data.get('routes') else "N/A"
+            
+        # 4. Format Times
+        formatted_drive = format_travel_time(drive_time_min)
+        formatted_moto = format_travel_time(moto_time_min)
+        formatted_transit = format_travel_time(transit_time_min)
 
-        # 4. Check for Better Routes (Detours)
+        # 5. Check for Better Routes (Detours)
         better_route_msg = ""
-        map_image_url = generate_static_map_url(main_route['polyline']['encodedPolyline'])
+        map_image_url = generate_static_map_url(
+            main_route['polyline']['encodedPolyline'],
+            ORIGIN["lat"], ORIGIN["lng"],
+            DESTINATION["lat"], DESTINATION["lng"]
+        )
         
         if len(drive_data['routes']) > 1:
             for alt_route in drive_data['routes'][1:]:
@@ -84,41 +53,51 @@ def main():
                         f"(Travel time: {alt_time} mins)"
                     )
                     # Update map to show the better route instead
-                    map_image_url = generate_static_map_url(alt_route['polyline']['encodedPolyline'])
-                    break 
+                    map_image_url = generate_static_map_url(
+                        main_route['polyline']['encodedPolyline'],
+                        ORIGIN["lat"], ORIGIN["lng"],
+                        DESTINATION["lat"], DESTINATION["lng"]
+                    )
+                    break
 
-        # 5. Construct Discord Message
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 6. Construct Discord Message
+        CURRENT_TIME = datetime.now().strftime("%B %d, %Y %I:%M %p")
         
-        traffic_status = ""
+        traffic_status_msg = ""
+        header_emoji = "🔴" if is_heavy_traffic else "🟢"
         if is_heavy_traffic:
-            traffic_status = f"\n⚠️ **HEAVY TRAFFIC DETECTED**\nCurrent conditions are adding ~{traffic_delay} minutes of delay compared to free-flow traffic."
+            traffic_status_msg = f"\n⚠️ **HEAVY TRAFFIC DETECTED**\nCurrent conditions are adding ~{traffic_delay} minutes of delay compared to free-flow traffic."
 
         message_content = f"""
-**Traffic Situation Advisory**
-*From Location X to Location Y*
-*As of {current_time}*
+>>> ## {header_emoji} Traffic Situation Advisory
+**Date:** *{CURRENT_TIME}*
+**Route:** Home (H) ➡️ Office (O)
 
-🏍️ **Motorcycle:** {moto_time_min} mins
-🚗 **Car:** {drive_time_min} mins
-🚌 **Commute:** {transit_time_min} mins
+**Estimated Travel Times:**
+- 🏍️ **Motorcycle:** `{formatted_moto}`
+- 🚗 **Car:** `{formatted_drive}`
+- 🚌 **Commute:** `{formatted_transit}`
 
-{traffic_status}
+{traffic_status_msg}
 {better_route_msg}
 """
 
         payload = {
             "content": message_content,
             "embeds": [{
-                "title": "Route Visual",
+                "title": "Home to JEG Tower Route",
                 "image": {"url": map_image_url},
-                "color": 16711680 if is_heavy_traffic else 65280 # Red if traffic, Green if clear
+                "color": COLOR_RED if is_heavy_traffic else COLOR_GREEN
             }]
         }
 
-        requests.post(DISCORD_WEBHOOK_URL, json=payload)
-        print("Notification sent successfully.")
-
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload)
+        if response.status_code == 204:
+            print("Traffic update sent successfully.")
+        else:
+            print(f"Failed to send traffic update. Status code: {response.status_code}")
+            print(f"Response: {response.text}")
+        
     except Exception as e:
         print(f"Error running script: {e}")
 
