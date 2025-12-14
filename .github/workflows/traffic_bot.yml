@@ -1,0 +1,38 @@
+name: Traffic Bot Schedule
+
+on:
+  schedule:
+    # Runs at 6:00 AM, 12:00 PM, 4:00 PM (Philippines Time is UTC+8)
+    # GitHub uses UTC time, so we subtract 8 hours:
+    # 6 AM PHT = 22 PM UTC (previous day)
+    # 12 PM PHT = 04 AM UTC
+    # 4 PM PHT = 08 AM UTC
+    - cron: '0 22,4,8 * * *'
+  workflow_dispatch: # Allows you to click a button to test it manually
+
+jobs:
+  run-traffic-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Traffic Script
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          LAT_HOME: ${{ secrets.LAT_HOME }}
+          LNG_HOME: ${{ secrets.LNG_HOME }}
+          LAT_JEG: ${{ secrets.LAT_JEG }}
+          LNG_JEG: ${{ secrets.LNG_JEG }}
+        run: python trafficSituationNotifier.py
