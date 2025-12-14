@@ -1,2 +1,12 @@
-venv/
+# Cache
+__pycache__
+*.pyc
+
+# Venv
+bin/
+include/
+lib/
+pyvenv.cfg
+
+# Env files
 .env
