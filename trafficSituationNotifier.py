@@ -1,11 +1,19 @@
+import os
 import requests
 from datetime import datetime
-from config.config import DISCORD_WEBHOOK_URL, DETOUR_SAVINGS_THRESHOLD_MIN, ORIGIN, DESTINATION, COLOR_GREEN, COLOR_RED
+from config.config import DETOUR_SAVINGS_THRESHOLD_MIN, ORIGIN, DESTINATION, COLOR_GREEN, COLOR_RED
 from config.googleData import get_route_data, generate_static_map_url
 from helpers.parseDuration import parse_duration
 from helpers.formatTravelTime import format_travel_time
 
 def main():
+    DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+    
+    if not DISCORD_WEBHOOK_URL:
+        print("❌ ERROR: Discord Webhook URL is missing or None.")
+        print("Double check your GitHub Secret name is 'DISCORD_WEBHOOK_URL'")
+        return
+    
     try:
         # 1. Fetch Data for all modes
         drive_data = get_route_data("DRIVE", alternatives=True)
@@ -66,7 +74,7 @@ def main():
         traffic_status_msg = ""
         header_emoji = "🔴" if is_heavy_traffic else "🟢"
         if is_heavy_traffic:
-            traffic_status_msg = f"\n⚠️ **HEAVY TRAFFIC DETECTED**\nCurrent conditions are adding ~{traffic_delay} minutes of delay compared to free-flow traffic."
+            traffic_status_msg = f"⚠️ **HEAVY TRAFFIC DETECTED**\nCurrent traffic conditions are adding around {traffic_delay} minutes of delay compared to free-flow traffic."
 
         message_content = f"""
 >>> ## {header_emoji} Traffic Situation Advisory
