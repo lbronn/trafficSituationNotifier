@@ -33,6 +33,6 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           LAT_HOME: ${{ secrets.LAT_HOME }}
           LNG_HOME: ${{ secrets.LNG_HOME }}
-          LAT_JEG: ${{ secrets.LAT_JEG }}
-          LNG_JEG: ${{ secrets.LNG_JEG }}
+          LAT_DEST: ${{ secrets.LAT_DEST }}
+          LNG_DEST: ${{ secrets.LNG_DEST }}
         run: python trafficSituationNotifier.py
