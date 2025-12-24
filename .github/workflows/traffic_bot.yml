@@ -30,6 +30,8 @@ jobs:
       - name: Run Traffic Script
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_ROUTES_API: ${{ secrets.GOOGLE_ROUTES_API }}
+          GOOGLE_STATIC_MAPS_API: ${{ secrets.GOOGLE_STATIC_MAPS_API }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           LAT_HOME: ${{ secrets.LAT_HOME }}
           LNG_HOME: ${{ secrets.LNG_HOME }}
